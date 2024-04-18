@@ -16,15 +16,178 @@ device = torch.device("cuda")
 model = SentenceTransformer('DMetaSoul/Dmeta-embedding').to(device)
 
 
+class MyParagraph:
+    """
+    文档段落
+    """
+
+    def __init__(self, index, text):
+        """
+        :param index:
+        :param text:
+        """
+        self.text: str = text
+        self.index: int = index
+        self.sentences: list = cut_sent(text)
+
+    def check(self):
+        """
+        判断是否为空或者是否小于16个字符
+        :return:
+        """
+        return len(self.text) < 16
+
+    def check_java(self):
+        """
+        判断是否为java代码
+        :return:
+        """
+        return re.match(r'^\s*(package\s+[\w.]+\s*;|public|private|protected|class|interface)\s+\w+', self.text)
+
+    def check_python(self):
+        """
+        判断是否为python代码
+        :return:
+        """
+        return re.match(r'^\s*(import\s+[\w.]+\s*;|def\s+\w+\s*\(.*\)\s*:|class\s+\w+\s*:)', self.text)
+
+    def check_c(self):
+        """
+        判断是否为c代码
+        :return:
+        """
+        return re.match(r'^\s*(#include\s+[\w.]+\s*;|int\s+\w+\s*\(.*\)\s*:|class\s+\w+\s*:)', self.text)
+
+    def check_cplusplus(self):
+        """
+        判断是否为c++代码
+        :return:
+        """
+        return re.match(r'^\s*(#include\s+[\w.]+\s*;|int\s+\w+\s*\(.*\)\s*:|class\s+\w+\s*:)', self.text)
+
+    def check_chinese(self):
+        """
+        判断是否为中文
+        :return:
+        """
+        return re.match(r'^[\u4e00-\u9fa5_a-zA-Z0-9]+$', self.text)
+
+
+class MyDocument:
+    """
+    文档
+    """
+
+    def __init__(self, path: str, index: int):
+        """
+        初始化文档
+        :param path:
+        :param index:
+        """
+        # 文档路径
+        self.path: str = path
+        # 文档索引
+        self.doc_index: int = index
+        # 文档对象
+        self.doc: Document = docx.Document(path)
+        # 文档段落
+        self.paragraphs: pd.DataFrame = pd.DataFrame()
+        # 文档句子嵌入向量
+        self.embeddings: torch.Tensor = torch.Tensor()
+        # 文档标题
+        self.title: str = os.path.basename(path)
+        # 解析文档
+        self._parse_word()
+
+    def paser_part(self, block):
+        """
+        处理文档部分
+        :param block:
+        :return:
+        """
+        if isinstance(block, CT_P):
+            para = Paragraph(block, self.doc)
+            if is_image(para, self.doc):
+                return get_ImagePart(para, self.doc)
+            return Paragraph(block, self.doc)
+        elif isinstance(block, CT_Tbl):
+            return Table(block, self.doc)
+
+    def block_process(self, block, block_index, rows_to_append):
+        """
+        处理文档部分
+        :param block:
+        :param block_index:
+        :param rows_to_append:
+        :return:
+        """
+        if isinstance(block, Paragraph):
+            # 判断该子对象是否是正文
+            if block.style.name == 'Normal':
+                paragraph = MyParagraph(block_index, block.text)
+                # 判断该段落是否为空或者是否小于16个字符
+                if paragraph.check():
+                    return
+                rows_to_append.extend([
+                    {'document_index': self.doc_index, 'paragraph_index': block_index, 'sent_index': sent_index,
+                     'sent': sent}
+                    for sent_index, sent in enumerate(paragraph.sentences)
+                ])
+            # 判断是否为标题1。如果是Heading 2则判断是否为标2，以此类推。
+            elif block.style.name == 'Heading 1':
+                pass
+        elif isinstance(block, ImagePart):
+            # 判断该子对象是否是图片
+            pass
+        elif isinstance(block, Table):
+            # 判断该子对象是否是表格
+            pass
+
+    def _parse_word(self):
+        """
+        解析word文档
+        :return:
+        """
+        rows_to_append = []
+        it = iter(self.doc.element.body)  # 创建一个迭代器
+        block_index = 0
+        while True:
+            try:
+                part = next(it)  # 获取下一个部分
+                block = self.paser_part(part)  # 处理当前部分
+                self.block_process(block, block_index, rows_to_append)
+                block_index += 1
+            except StopIteration:
+                break  # 迭代结束时退出循环
+        self.paragraphs = pd.DataFrame(rows_to_append,
+                                       columns=['document_index', 'paragraph_index', 'sent_index', 'sent'])
+        # 计算句子嵌入向量
+        self.calculate_embeddings()
+
+    def calculate_embeddings(self):
+        # 提取句子文本，保留段落号和句子号信息
+        sentences = self.paragraphs['sent'].values
+        # 使用model.encode计算句子嵌入矩阵
+        self.embeddings = model.encode(sentences, convert_to_tensor=True).to(device)
+
+    def get_sentence_info(self, index):
+        return self.paragraphs.iloc[index, :]
+
+
 def cut_sent(para):
-    para = re.sub('([。！？\?])([^”’])', r"\1\n\2", para)  # 单字符断句符
-    para = re.sub('(\.{6})([^”’])', r"\1\n\2", para)  # 英文省略号
-    para = re.sub('(\…{2})([^”’])', r"\1\n\2", para)  # 中文省略号
-    para = re.sub('([。！？\?][”’])([^，。！？\?])', r'\1\n\2', para)
-    # 如果双引号前有终止符，那么双引号才是句子的终点，把分句符\n放到双引号后，注意前面的几句都小心保留了双引号
-    para = para.rstrip()  # 段尾如果有多余的\n就去掉它
-    # 很多规则中会考虑分号;，但是这里我把它忽略不计，破折号、英文双引号等同样忽略，需要的再做些简单调整即可。
-    return para.split("\n")
+    # 将单字符的断句符替换为换行符
+    para = re.sub(r'([。！？\?])([^”’])', r"\1\n\2", para)
+    # 将英文省略号替换为换行符
+    para = re.sub(r'(\.{6})([^”’])', r"\1\n\2", para)
+    # 将中文省略号替换为换行符
+    para = re.sub(r'(\…{2})([^”’])', r"\1\n\2", para)
+    # 如果双引号前有终止符，那么双引号才是句子的终点，将分句符\n放到双引号后
+    para = re.sub(r'([。！？\?][”’])([^，。！？\?])', r'\1\n\2', para)
+    # 去除段尾多余的换行符
+    para = para.rstrip()
+    # 分割成句子列表
+    sentences = para.split("\n")
+    return sentences
 
 
 # 该行只能有一个图片
@@ -47,93 +210,6 @@ def get_ImagePart(graph: Paragraph, doc: Document):
             if isinstance(part, ImagePart):
                 return part
     return None
-
-
-def iter_block_items(parent):
-    if isinstance(parent, Document):
-        parent_elm = parent.element.body
-    elif isinstance(parent, _Cell):
-        parent_elm = parent._tc
-    else:
-        raise ValueError("something's not right")
-
-    for child in parent_elm.iterchildren():
-        if isinstance(child, CT_P):
-            paragraph = Paragraph(child, parent)
-            if is_image(paragraph, parent):
-                yield get_ImagePart(paragraph, parent)
-            yield Paragraph(child, parent)
-        elif isinstance(child, CT_Tbl):
-            yield Table(child, parent)
-
-
-class MyParagraph:
-    def __init__(self, index, text):
-        self.text = text
-        self.index = index
-        self.sentences = cut_sent(text)
-
-    def check(self):
-        return len(self.text) < 16
-
-    def check_java(self):
-        return re.match(r'^\s*(package\s+[\w.]+\s*;|public|private|protected|class|interface)\s+\w+', self.text)
-
-    def __str__(self):
-        str = f"段落：{self.index}\n"
-        for index, sentence in enumerate(self.sentences):
-            str += f"第{index}句:{sentence} \n"
-        return str
-
-
-class MyDocument:
-    def __init__(self, path: str, index: int):
-        self.path = path
-        self.doc_index = index
-        self.paragraphs = None
-        self.embeddings = None
-        self.title = os.path.basename(path)
-        self._process_document()
-
-    def _process_document(self):
-        doc = docx.Document(self.path)
-        rows_to_append = []
-        for part_index, part in enumerate(iter_block_items(doc)):
-            if isinstance(part, Paragraph):
-                # 判断该子对象是否是正文
-                if part.style.name == 'Normal':
-                    paragraph = MyParagraph(part_index, part.text)
-                    # 判断该段落是否为空或者是否小于16个字符
-                    if paragraph.check():
-                        continue
-
-                    rows_to_append.extend([
-                        {'document_index': self.doc_index, 'paragraph_index': part_index, 'sent_index': sent_index,
-                         'sent': sent}
-                        for sent_index, sent in enumerate(paragraph.sentences)
-                    ])
-                # 判断是否为标题1。如果是Heading 2则判断是否为标2，以此类推。
-                elif part.style.name == 'Heading 1':
-                    pass
-            elif isinstance(part, ImagePart):
-                # 判断该子对象是否是图片
-                pass
-            elif isinstance(part, Table):
-                # 判断该子对象是否是表格
-                pass
-        self.paragraphs = pd.DataFrame(rows_to_append,
-                                       columns=['document_index', 'paragraph_index', 'sent_index', 'sent'])
-        # 计算句子嵌入向量
-        self.calculate_embeddings()
-
-    def calculate_embeddings(self):
-        # 提取句子文本，保留段落号和句子号信息
-        sentences = self.paragraphs['sent'].values
-        # 使用model.encode计算句子嵌入矩阵
-        self.embeddings = model.encode(sentences, convert_to_tensor=True).to(device)
-
-    def get_sentence_info(self, index):
-        return self.paragraphs.iloc[index, :]
 
 
 def calculate(embeddings1, embeddings2):
