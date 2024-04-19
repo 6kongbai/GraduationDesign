@@ -1,14 +1,16 @@
-import re
-import torch
+from types import NoneType
 from sentence_transformers import SentenceTransformer
-import pandas as pd
-import docx
 from docx.document import Document
 from docx.text.paragraph import Paragraph
 from docx.parts.image import ImagePart
 from docx.table import _Cell, Table
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
+from src.CodeType import CodeType
+from src.MyParagraph import MyParagraph
+import torch
+import pandas as pd
+import docx
 import os
 
 device = torch.device("cuda")
@@ -16,73 +18,17 @@ device = torch.device("cuda")
 model = SentenceTransformer('DMetaSoul/Dmeta-embedding').to(device)
 
 
-class MyParagraph:
-    """
-    文档段落
-    """
-
-    def __init__(self, index, text):
-        """
-        :param index:
-        :param text:
-        """
-        self.text: str = text
-        self.index: int = index
-        self.sentences: list = cut_sent(text)
-
-    def check(self):
-        """
-        判断是否为空或者是否小于16个字符
-        :return:
-        """
-        return len(self.text) < 16
-
-    def check_java(self):
-        """
-        判断是否为java代码
-        :return:
-        """
-        return re.match(r'^\s*(package\s+[\w.]+\s*;|public|private|protected|class|interface)\s+\w+', self.text)
-
-    def check_python(self):
-        """
-        判断是否为python代码
-        :return:
-        """
-        return re.match(r'^\s*(import\s+[\w.]+\s*;|def\s+\w+\s*\(.*\)\s*:|class\s+\w+\s*:)', self.text)
-
-    def check_c(self):
-        """
-        判断是否为c代码
-        :return:
-        """
-        return re.match(r'^\s*(#include\s+[\w.]+\s*;|int\s+\w+\s*\(.*\)\s*:|class\s+\w+\s*:)', self.text)
-
-    def check_cplusplus(self):
-        """
-        判断是否为c++代码
-        :return:
-        """
-        return re.match(r'^\s*(#include\s+[\w.]+\s*;|int\s+\w+\s*\(.*\)\s*:|class\s+\w+\s*:)', self.text)
-
-    def check_chinese(self):
-        """
-        判断是否为中文
-        :return:
-        """
-        return re.match(r'^[\u4e00-\u9fa5_a-zA-Z0-9]+$', self.text)
-
-
 class MyDocument:
     """
     文档
     """
 
-    def __init__(self, path: str, index: int):
+    def __init__(self, path: str, index: int, code_type: str):
         """
         初始化文档
-        :param path:
-        :param index:
+        :param path:文档路径
+        :param index:文档序号
+        :param code_type:代码类型 0:java 1:python 2:c 3:c++
         """
         # 文档路径
         self.path: str = path
@@ -90,12 +36,16 @@ class MyDocument:
         self.doc_index: int = index
         # 文档对象
         self.doc: Document = docx.Document(path)
+        # 代码类型
+        self.code_type: CodeType = CodeType.get_code_type(code_type)
         # 文档段落
         self.paragraphs: pd.DataFrame = pd.DataFrame()
         # 文档句子嵌入向量
         self.embeddings: torch.Tensor = torch.Tensor()
         # 文档标题
         self.title: str = os.path.basename(path)
+        # 文档中的源代码
+        self.codes: list = []
         # 解析文档
         self._parse_word()
 
@@ -113,7 +63,7 @@ class MyDocument:
         elif isinstance(block, CT_Tbl):
             return Table(block, self.doc)
 
-    def block_process(self, block, block_index, rows_to_append):
+    def block_process(self, block, block_index, rows_to_append) -> CodeType:
         """
         处理文档部分
         :param block:
@@ -124,15 +74,20 @@ class MyDocument:
         if isinstance(block, Paragraph):
             # 判断该子对象是否是正文
             if block.style.name == 'Normal':
-                paragraph = MyParagraph(block_index, block.text)
-                # 判断该段落是否为空或者是否小于16个字符
-                if paragraph.check():
-                    return
-                rows_to_append.extend([
-                    {'document_index': self.doc_index, 'paragraph_index': block_index, 'sent_index': sent_index,
-                     'sent': sent}
-                    for sent_index, sent in enumerate(paragraph.sentences)
-                ])
+                paragraph = MyParagraph(block.text, self.code_type)
+                flag = paragraph.check()
+                if flag != CodeType.NULL and flag != self.code_type and len(paragraph.text) > 16:
+                    rows_to_append.extend([
+                        {
+                            'document_index': self.doc_index,
+                            'paragraph_index': block_index,
+                            'sent_index': sent_index,
+                            'sent': sent
+                        }
+                        for sent_index, sent in enumerate(paragraph.sentences)
+                    ])
+                return flag
+
             # 判断是否为标题1。如果是Heading 2则判断是否为标2，以此类推。
             elif block.style.name == 'Heading 1':
                 pass
@@ -143,6 +98,13 @@ class MyDocument:
             # 判断该子对象是否是表格
             pass
 
+    def code_process(self, block) -> CodeType:
+        paragraph = MyParagraph(block.text, self.code_type)
+        flag = paragraph.check()
+        if flag != CodeType.CHINESE:
+            self.codes[-1] += paragraph.text + '\n'
+        return flag
+
     def _parse_word(self):
         """
         解析word文档
@@ -151,11 +113,23 @@ class MyDocument:
         rows_to_append = []
         it = iter(self.doc.element.body)  # 创建一个迭代器
         block_index = 0
+        flag = True  # 当为True时，表示当前部分为非代码部分，否则为代码部分
         while True:
             try:
                 part = next(it)  # 获取下一个部分
-                block = self.paser_part(part)  # 处理当前部分
-                self.block_process(block, block_index, rows_to_append)
+                block = self.paser_part(part)  # 获取当前部分
+                if isinstance(block, NoneType):
+                    continue
+                if flag:
+                    part_type = self.block_process(block, block_index, rows_to_append)  # 处理当前部分
+                    if part_type == self.code_type:
+                        self.codes.append("""""")
+                        self.code_process(block)
+                        flag = False
+                else:
+                    part_type = self.code_process(block)
+                    if part_type == CodeType.CHINESE:
+                        flag = True
                 block_index += 1
             except StopIteration:
                 break  # 迭代结束时退出循环
@@ -170,24 +144,17 @@ class MyDocument:
         # 使用model.encode计算句子嵌入矩阵
         self.embeddings = model.encode(sentences, convert_to_tensor=True).to(device)
 
+    def calculate_similarity(self, other_doc: 'MyDocument'):
+        similarity_matrix = calculate(self.embeddings, other_doc.embeddings)
+        max_values, indices = torch.max(similarity_matrix, dim=1)
+        for i, j in enumerate(indices):
+            if max_values[i] > 0.85:
+                print('原句子:', self.get_sentence_info(i)['sent'], '\n相似句子:',
+                      other_doc.get_sentence_info(j.item())['sent'],
+                      f'\n相似分数:{max_values[i]:.2f}\n')
+
     def get_sentence_info(self, index):
         return self.paragraphs.iloc[index, :]
-
-
-def cut_sent(para):
-    # 将单字符的断句符替换为换行符
-    para = re.sub(r'([。！？\?])([^”’])', r"\1\n\2", para)
-    # 将英文省略号替换为换行符
-    para = re.sub(r'(\.{6})([^”’])', r"\1\n\2", para)
-    # 将中文省略号替换为换行符
-    para = re.sub(r'(\…{2})([^”’])', r"\1\n\2", para)
-    # 如果双引号前有终止符，那么双引号才是句子的终点，将分句符\n放到双引号后
-    para = re.sub(r'([。！？\?][”’])([^，。！？\?])', r'\1\n\2', para)
-    # 去除段尾多余的换行符
-    para = para.rstrip()
-    # 分割成句子列表
-    sentences = para.split("\n")
-    return sentences
 
 
 # 该行只能有一个图片
@@ -220,6 +187,6 @@ def calculate(embeddings1, embeddings2):
 if __name__ == '__main__':
     name = 'B20200103213-唐睿智-21软件01-软件工程基础实训II(2023)-校内集中实训课程实训报告.docx'
     ROOT_DIR_P = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))  # 项目根目录
-    word_path = os.path.join(ROOT_DIR_P,
-                             f"files/{name}")  # pdf文件路径及文件名
-    d1 = MyDocument(word_path, 0)
+    word_path = os.path.join(ROOT_DIR_P, f"files/{name}")  # pdf文件路径及文件名
+    d1 = MyDocument(word_path, 0, 'java')
+    print(d1.paragraphs)
