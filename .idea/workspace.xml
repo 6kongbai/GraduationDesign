@@ -5,8 +5,6 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="fe1d461d-ea10-4c4b-a4cc-0abda21bc786" name="Changes" comment="Changes">
-      <change afterPath="$PROJECT_DIR$/src/CodeType.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/MyParagraph.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/DocumentPreprocessing.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/DocumentPreprocessing.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/test.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/src/test.ipynb" afterDir="false" />
@@ -60,24 +58,24 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.CodeType.executor": "Run",
-    "Python.DocumentPreprocessing.executor": "Run",
-    "Python.MyParagraph.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "next__revise",
-    "ignore.virus.scanning.warn.message": "true",
-    "last_opened_file_path": "D:/Code/python_code/GraduationDesign",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.CodeType.executor&quot;: &quot;Run&quot;,
+    &quot;Python.DocumentPreprocessing.executor&quot;: &quot;Run&quot;,
+    &quot;Python.MyParagraph.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;next__revise&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;D:/Code/python_code/GraduationDesign&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="D:\Code\python_code\GraduationDesign" />
@@ -180,7 +178,13 @@
       <workItem from="1713425712765" duration="2388000" />
       <workItem from="1713428117830" duration="6718000" />
       <workItem from="1713495540889" duration="15468000" />
-      <workItem from="1713532786304" duration="8069000" />
+      <workItem from="1713532786304" duration="9541000" />
+      <workItem from="1713578035909" duration="827000" />
+      <workItem from="1713756952710" duration="1217000" />
+      <workItem from="1713774624401" duration="2384000" />
+      <workItem from="1713783104814" duration="1991000" />
+      <workItem from="1713795665595" duration="141000" />
+      <workItem from="1713847189516" duration="2132000" />
     </task>
     <task id="LOCAL-00001" summary="Changes">
       <option name="closed" value="true" />
@@ -198,7 +202,15 @@
       <option name="project" value="LOCAL" />
       <updated>1713430680713</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Changes">
+      <option name="closed" value="true" />
+      <created>1713541246434</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1713541246434</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
